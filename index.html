@@ -2,41 +2,47 @@
 <html lang="ar" dir="rtl">
 <head>
     <meta charset="UTF-8">
-    <title>غرفة البث المباشر</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>غرفة السهرة الخاصة</title>
     <style>
-        body { background: #0a0a0a; color: white; font-family: sans-serif; text-align: center; margin: 0; padding: 20px; }
-        #videoContainer { display: flex; flex-direction: column; align-items: center; gap: 20px; margin-top: 20px; }
-        video { width: 90%; max-width: 800px; border: 2px solid #333; border-radius: 10px; background: #000; }
-        .controls { margin-top: 20px; }
-        button { padding: 12px 24px; font-size: 16px; cursor: pointer; border-radius: 5px; border: none; background: #e50914; color: white; font-weight: bold; margin: 5px; }
-        button:hover { background: #b80710; }
-        #status { color: #aaa; margin-top: 10px; font-size: 18px; }
+        body { background: #0a0a0a; color: white; font-family: sans-serif; text-align: center; margin: 0; padding: 15px; }
+        h1 { font-size: 22px; margin-bottom: 10px; }
+        #status { color: #aaa; margin-bottom: 15px; font-size: 14px; }
+        .video-box { width: 100%; max-width: 700px; margin: 0 auto 15px auto; background: #000; border: 2px solid #222; border-radius: 10px; overflow: hidden; aspect-ratio: 16/9; display: flex; align-items: center; justify-content: center; }
+        video { width: 100%; height: 100%; object-fit: contain; }
+        .controls { display: flex; justify-content: center; gap: 10px; flex-wrap: wrap; margin-bottom: 20px; }
+        button { padding: 12px 20px; font-size: 15px; cursor: pointer; border-radius: 8px; border: none; background: #e50914; color: white; font-weight: bold; }
+        button:active { opacity: 0.8; }
+        #micBtn { background: #333; }
+        #micBtn.muted { background: #b80710; }
     </style>
 </head>
 <body>
-    <h1>غرفة الرعب الخاصة</h1>
+
+    <h1>غرفة الرعب المشتركة</h1>
     <div id="status">جاري الاتصال بالسيرفر...</div>
     
+    <!-- عناصر التحكم تظهر للكمبيوتر فقط -->
     <div class="controls" id="hostControls" style="display:none;">
-        <button onclick="startBroadcast()">بدء بث الشاشة والمايك</button>
-        <button onclick="toggleMic()">تشغيل/إيقاف المايك</button>
+        <button onclick="startBroadcast()">بدء البث</button>
+        <button id="micBtn" onclick="toggleMic()" style="display:none;">إيقاف المايك (مفتوح)</button>
     </div>
 
-    <div id="videoContainer">
-        <video id="remoteVideo" autoplay playsinline controls></video>
+    <!-- مربع عرض الفيديو -->
+    <div class="video-box">
+        <video id="streamVideo" autoplay playsinline controls></video>
     </div>
 
     <script src="https://unpkg.com/peerjs@1.5.2/dist/peerjs.min.js"></script>
     <script>
         const urlParams = new URLSearchParams(window.location.search);
-        const roomId = urlParams.get('room') || 'obada-default-room';
+        const roomId = urlParams.get('room') || 'obada-horror-room';
         const isHost = urlParams.get('host') === 'true';
 
         if (isHost) {
             document.getElementById('hostControls').style.display = 'block';
         }
 
-        // إضافة سيرفرات STUN المجانية لتجاوز جدار الحماية والراوتر
         const peerOptions = {
             config: {
                 'iceServers': [
@@ -48,58 +54,89 @@
 
         const peer = new Peer(isHost ? roomId + '-host' : null, peerOptions);
         let localStream;
+        let micTrack;
 
-        peer.on('open', (id) => {
+        peer.on('open', () => {
             if (!isHost) {
-                document.getElementById('status').innerText = "متصل بالسيرفر. جاري الاتصال بالكمبيوتر...";
+                document.getElementById('status').innerText = "جاري البحث عن البث...";
                 connectToHost();
             } else {
-                document.getElementById('status').innerText = "جاهز للبث (الكمبيوتر). اضغط على 'بدء بث الشاشة والمايك'";
+                document.getElementById('status').innerText = "جاهز للبث. اضغط على 'بدء البث'";
             }
         });
 
         async function startBroadcast() {
             try {
+                // التقاط الشاشة والصوت الأصلي للفيلم
                 const screenStream = await navigator.mediaDevices.getDisplayMedia({
                     video: true, 
                     audio: { echoCancellation: false, noiseSuppression: false, autoGainControl: false }
                 });
+
+                // التقاط المايك الخاص بك
                 const micStream = await navigator.mediaDevices.getUserMedia({ audio: true });
-                
-                localStream = new MediaStream([...screenStream.getTracks(), ...micStream.getAudioTracks()]);
-                
-                // الاستماع لاتصالات المشاهدين
+                micTrack = micStream.getAudioTracks()[0];
+
+                // دمج مسارات الفيديو والصوت
+                localStream = new MediaStream([
+                    ...screenStream.getVideoTracks(),
+                    ...screenStream.getAudioTracks(),
+                    micTrack
+                ]);
+
+                // عرض البث عندك بالمربع الأسود محلياً
+                const videoElement = document.getElementById('streamVideo');
+                videoElement.srcObject = localStream;
+                videoElement.muted = true; // كتم الصوت محلياً كي لا يتكرر عندك
+
+                document.getElementById('micBtn').style.display = 'inline-block';
+                document.getElementById('status').innerText = "البث شغال الآن ويتم نقله للمشاهد!";
+
+                // إذا قام المستخدم بإيقاف مشاركة الشاشة من المتصفح
+                screenStream.getVideoTracks()[0].onended = () => {
+                    alert("تم إيقاف البث.");
+                    window.location.reload();
+                };
+
+                // الرد على اتصال الصديق وإرسال البث له
                 peer.on('call', (call) => {
                     call.answer(localStream);
-                    document.getElementById('status').innerText = "تم اتصال المشاهد بنجاح!";
+                    document.getElementById('status').innerText = "متصل مع صديقك الآن 🔴";
                 });
 
-                document.getElementById('status').innerText = "البث شغال وجاري الانتظار...";
             } catch (err) {
-                alert("خطأ في بدء البث: " + err);
+                alert("يجب السماح بمشاركة الشاشة والمايك لكي يعمل البث.");
             }
         }
 
         function connectToHost() {
-            // إنشاء اتصال فارغ لإرسال طلب للكمبيوتر
-            const emptyStream = new MediaStream();
-            const call = peer.call(roomId + '-host', emptyStream);
-            
+            // محاولة الاتصال بالكمبيوتر
+            const call = peer.call(roomId + '-host', new MediaStream());
+
             call.on('stream', (remoteStream) => {
-                const remoteVideo = document.getElementById('remoteVideo');
-                remoteVideo.srcObject = remoteStream;
-                document.getElementById('status').innerText = "تم عرض البث بنجاح! استمتعوا.";
+                const videoElement = document.getElementById('streamVideo');
+                videoElement.srcObject = remoteStream;
+                videoElement.muted = false; // تفعيل الصوت عند الصديق
+                document.getElementById('status').innerText = "متصل بالبث بنجاح 🔴 استمتعا بالسهرة!";
             });
 
-            call.on('error', (err) => {
-                document.getElementById('status').innerText = "فشل الاتصال. تأكد أن الكمبيوتر بدأ البث أولاً.";
+            call.on('error', () => {
+                document.getElementById('status').innerText = "البث غير مفتوح حالياً. انتظر حتى يقوم صديقك ببدء البث.";
+                setTimeout(connectToHost, 4000); // إعادة المحاولة تلقائياً كل 4 ثوانٍ
             });
         }
 
         function toggleMic() {
-            if (localStream) {
-                localStream.getAudioTracks().forEach(track => track.enabled = !track.enabled);
-                alert("تم تغيير حالة المايك");
+            if (micTrack) {
+                micTrack.enabled = !micTrack.enabled;
+                const btn = document.getElementById('micBtn');
+                if (micTrack.enabled) {
+                    btn.innerText = "إيقاف المايك (مفتوح)";
+                    btn.classList.remove('muted');
+                } else {
+                    btn.innerText = "تشغيل المايك (مكتوم)";
+                    btn.classList.add('muted');
+                }
             }
         }
     </script>

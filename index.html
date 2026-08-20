@@ -10,11 +10,11 @@
         .controls { margin-top: 20px; }
         button { padding: 12px 24px; font-size: 16px; cursor: pointer; border-radius: 5px; border: none; background: #e50914; color: white; font-weight: bold; margin: 5px; }
         button:hover { background: #b80710; }
-        #status { color: #aaa; margin-top: 10px; }
+        #status { color: #aaa; margin-top: 10px; font-size: 18px; }
     </style>
 </head>
 <body>
-    <h1>غرفة البث الخاصة</h1>
+    <h1>غرفة الرعب الخاصة</h1>
     <div id="status">جاري الاتصال بالسيرفر...</div>
     
     <div class="controls" id="hostControls" style="display:none;">
@@ -23,36 +23,38 @@
     </div>
 
     <div id="videoContainer">
-        <!-- شاشة العرض للمشاهد (الهاتف) -->
-        <video id="remoteVideo" autoplay playsinline></video>
+        <video id="remoteVideo" autoplay playsinline controls></video>
     </div>
 
     <script src="https://unpkg.com/peerjs@1.5.2/dist/peerjs.min.js"></script>
     <script>
-        // تحديد هوية الغرفة تلقائياً من الرابط (مثلاً: موقعك.com/?room=obada123)
         const urlParams = new URLSearchParams(window.location.search);
         const roomId = urlParams.get('room') || 'obada-default-room';
-
-        document.getElementById('status').innerText = "معرف الغرفة: " + roomId;
-
-        // هل أنت المرسل (الكمبيوتر) أم المشاهد (الهاتف)؟
-        // افتراضياً الكمبيوتر يفتح الرابط مع كلمة ?host=true
         const isHost = urlParams.get('host') === 'true';
 
         if (isHost) {
             document.getElementById('hostControls').style.display = 'block';
         }
 
-        const peer = new Peer(isHost ? roomId + '-host' : null);
+        // إضافة سيرفرات STUN المجانية لتجاوز جدار الحماية والراوتر
+        const peerOptions = {
+            config: {
+                'iceServers': [
+                    { urls: 'stun:stun.l.google.com:19302' },
+                    { urls: 'stun:global.stun.twilio.com:3478' }
+                ]
+            }
+        };
+
+        const peer = new Peer(isHost ? roomId + '-host' : null, peerOptions);
         let localStream;
 
         peer.on('open', (id) => {
             if (!isHost) {
-                // إذا كنت الهاتف، اتصل فوراً بالكمبيوتر (Host)
-                document.getElementById('status').innerText = "متصل بالسيرفر. جاري الاتصال بالبث...";
+                document.getElementById('status').innerText = "متصل بالسيرفر. جاري الاتصال بالكمبيوتر...";
                 connectToHost();
             } else {
-                document.getElementById('status').innerText = "أنت البث الأساسي (الكمبيوتر). اضغط بدء البث.";
+                document.getElementById('status').innerText = "جاهز للبث (الكمبيوتر). اضغط على 'بدء بث الشاشة والمايك'";
             }
         });
 
@@ -66,33 +68,38 @@
                 
                 localStream = new MediaStream([...screenStream.getTracks(), ...micStream.getAudioTracks()]);
                 
-                // استقبال أي مشاهد يتصل
+                // الاستماع لاتصالات المشاهدين
                 peer.on('call', (call) => {
                     call.answer(localStream);
+                    document.getElementById('status').innerText = "تم اتصال المشاهد بنجاح!";
                 });
 
-                document.getElementById('status').innerText = "البث شغال الآن! بانتظار المشاهد...";
+                document.getElementById('status').innerText = "البث شغال وجاري الانتظار...";
             } catch (err) {
                 alert("خطأ في بدء البث: " + err);
             }
         }
 
         function connectToHost() {
-            // الهاتف يتصل بالـ ID الخاص بالكمبيوتر
-            const call = peer.call(roomId + '-host', new MediaStream());
+            // إنشاء اتصال فارغ لإرسال طلب للكمبيوتر
+            const emptyStream = new MediaStream();
+            const call = peer.call(roomId + '-host', emptyStream);
+            
             call.on('stream', (remoteStream) => {
-                document.getElementById('remoteVideo').srcObject = remoteStream;
-                document.getElementById('status').innerText = "تمت المتصل بنجاح! استمتع بالسهرة.";
+                const remoteVideo = document.getElementById('remoteVideo');
+                remoteVideo.srcObject = remoteStream;
+                document.getElementById('status').innerText = "تم عرض البث بنجاح! استمتعوا.";
             });
+
             call.on('error', (err) => {
-                document.getElementById('status').innerText = "فشل الاتصال بالبث. تأكد أن الكمبيوتر بدأ البث.";
+                document.getElementById('status').innerText = "فشل الاتصال. تأكد أن الكمبيوتر بدأ البث أولاً.";
             });
         }
 
         function toggleMic() {
             if (localStream) {
                 localStream.getAudioTracks().forEach(track => track.enabled = !track.enabled);
-                alert("تم تبديل حالة المايك");
+                alert("تم تغيير حالة المايك");
             }
         }
     </script>
